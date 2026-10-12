@@ -54,15 +54,15 @@ fun MainApp() {
     val bottomItems = listOf(
         BottomNavItem("Home", Screen.Home.route, Icons.Default.Home),
         BottomNavItem("Disease Info", Screen.DiseaseInfo.route, Icons.AutoMirrored.Filled.MenuBook),
-        BottomNavItem("History", Screen.PredictionHistory.route, Icons.Default.History)
+        BottomNavItem("History", Screen.ClassificationHistory.route, Icons.Default.History)
     )
 
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
     val showBottomBar = currentRoute in listOf(
         Screen.Home.route,
         Screen.DiseaseInfo.route,
-        Screen.PredictionResult.route,
-        Screen.PredictionHistory.route
+        Screen.ClassificationResult.route,
+        Screen.ClassificationHistory.route
     )
 
     Scaffold(
@@ -110,12 +110,12 @@ fun MainApp() {
                     onResult = { result ->
                         latestScanResult = result
                         isViewingHistoryItem = false
-                        navController.navigate(Screen.PredictionResult.route)
+                        navController.navigate(Screen.ClassificationResult.route)
                     }
                 )
             }
-            composable(Screen.PredictionResult.route) {
-                PredictionResultScreen(
+            composable(Screen.ClassificationResult.route) {
+                ClassificationResultScreen(
                     result = latestScanResult,
                     isFromHistory = isViewingHistoryItem,
                     onBack = { navController.popBackStack() },
@@ -135,8 +135,8 @@ fun MainApp() {
             composable(Screen.DiseaseInfo.route) {
                 DiseaseInfoScreen(onBack = { navController.popBackStack() })
             }
-            composable(Screen.PredictionHistory.route) {
-                PredictionHistoryScreen(
+            composable(Screen.ClassificationHistory.route) {
+                ClassificationHistoryScreen(
                     history = historyState,
                     onBack = { navController.popBackStack() },
                     onDelete = { id ->
@@ -148,7 +148,7 @@ fun MainApp() {
                     onItemClick = { scanResult ->
                         latestScanResult = scanResult
                         isViewingHistoryItem = true
-                        navController.navigate(Screen.PredictionResult.route)
+                        navController.navigate(Screen.ClassificationResult.route)
                     }
                 )
             }

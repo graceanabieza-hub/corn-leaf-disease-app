@@ -26,7 +26,7 @@ import androidx.compose.ui.tooling.preview.Preview
 
 @Preview(showBackground = true)
 @Composable
-fun PredictionResultScreenPreview() {
+fun ClassificationResultScreenPreview() {
     val sampleResult = ScanResult(
         id = "1",
         date = "Sept 15, 2026",
@@ -38,12 +38,12 @@ fun PredictionResultScreenPreview() {
         recommendations = listOf("Apply recommended fungicide", "Remove and destroy infected leaves"),
         anfisFeatures = listOf("Rust-colored pustules", "Oval lesions")
     )
-    PredictionResultScreen(result = sampleResult, onBack = {}, onNewScan = {}, onSaveClick = {})
+    ClassificationResultScreen(result = sampleResult, onBack = {}, onNewScan = {}, onSaveClick = {})
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PredictionResultScreen(
+fun ClassificationResultScreen(
     result: ScanResult?,
     isFromHistory: Boolean = false,
     onBack: () -> Unit,
@@ -58,7 +58,7 @@ fun PredictionResultScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Prediction Result", color = Color.White) },
+                title = { Text("Classification Result", color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, null, tint = Color.White)
@@ -77,7 +77,7 @@ fun PredictionResultScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "No detection result available.\nPlease execute a leaf analysis from the home screen first.",
+                    text = "No classification result available.\nPlease execute a leaf analysis from the home screen first.",
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     color = TextSecondary,
                     fontSize = 15.sp
@@ -94,7 +94,7 @@ fun PredictionResultScreen(
                     .padding(20.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                // Predicted Disease card
+                // Classified Disease card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp)
@@ -104,7 +104,7 @@ fun PredictionResultScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Predicted Disease", fontSize = 13.sp, color = TextSecondary)
+                            Text("Classified Disease", fontSize = 13.sp, color = TextSecondary)
                             Text(result.diseaseName, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                             Text("(${result.scientificName})", fontSize = 13.sp, color = TextSecondary)
                         }
@@ -172,7 +172,7 @@ fun PredictionResultScreen(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("Explainability (ANFIS Rules)", fontWeight = FontWeight.SemiBold)
                         Text(
-                            "The prediction was based on the following important features:",
+                            "The classification was based on the following important features:",
                             fontSize = 13.sp,
                             color = TextSecondary,
                             modifier = Modifier.padding(vertical = 8.dp)

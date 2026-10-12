@@ -3,6 +3,7 @@ package com.example.cornleafdisease.ui.screens
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.example.cornleafdisease.data.model.ScanResult
+import com.example.cornleafdisease.ml.DiseaseClassifier
 import com.example.cornleafdisease.ui.theme.*
 import kotlinx.coroutines.delay
 import java.io.File
@@ -79,74 +81,28 @@ fun DetectDiseaseScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            val uri = createTempImageUri(context)
-            tempUri = uri
-            cameraLauncher.launch(uri)
+            try {
+                val uri = createTempImageUri(context)
+                tempUri = uri
+                cameraLauncher.launch(uri)
+            } catch (e: Exception) {
+                Log.e("DetectDiseaseScreen", "Error launching camera: ${e.message}")
+            }
         }
     }
 
+    val classifier = remember { DiseaseClassifier(context) }
+
     LaunchedEffect(isAnalyzing) {
         if (isAnalyzing) {
-            delay(1800)
+            delay(1200)
             isAnalyzing = false
             
-            val uriString = imageUri?.toString()?.lowercase() ?: ""
-            val scanResult = when {
-                uriString.contains("southern") -> ScanResult(
-                    id = UUID.randomUUID().toString(),
-                    date = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date()),
-                    diseaseName = "Southern Leaf Spot",
-                    scientificName = "Bipolaris maydis",
-                    confidence = 0.945f,
-                    severity = "Moderate",
-                    severityColorHex = 0xFFFFA000,
-                    recommendations = listOf("Plant resistant hybrids", "Practice crop rotation to reduce residue", "Tillage to bury infected crop debris"),
-                    anfisFeatures = listOf("Oval lesions", "Tan spots")
-                )
-                uriString.contains("rust") -> ScanResult(
-                    id = UUID.randomUUID().toString(),
-                    date = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date()),
-                    diseaseName = "Common Rust",
-                    scientificName = "Puccinia sorghi",
-                    confidence = 0.958f,
-                    severity = "Moderate",
-                    severityColorHex = 0xFFFFA000,
-                    recommendations = listOf("Plant resistant hybrids", "Apply foliar fungicide detected early", "Improve airflow to reduce leaf wetness"),
-                    anfisFeatures = listOf("Rust-colored pustules", "Oval lesions")
-                )
-                uriString.contains("northern") || uriString.contains("nothern") -> ScanResult(
-                    id = UUID.randomUUID().toString(),
-                    date = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date()),
-                    diseaseName = "Northern Leaf Blight",
-                    scientificName = "Exserohilum turcicum",
-                    confidence = 0.962f,
-                    severity = "High",
-                    severityColorHex = 0xFFE53935,
-                    recommendations = listOf("Use resistant hybrids as primary strategy", "Apply fungicides promptly once confirmed", "Practice crop rotation and residue management"),
-                    anfisFeatures = listOf("Cigar-shaped lesions", "Gray-green to tan spots")
-                )
-                uriString.contains("healthy") -> ScanResult(
-                    id = UUID.randomUUID().toString(),
-                    date = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date()),
-                    diseaseName = "Healthy",
-                    scientificName = "Zea mays",
-                    confidence = 0.991f,
-                    severity = "Low",
-                    severityColorHex = 0xFF43A047,
-                    recommendations = listOf("Continue regular field monitoring", "Maintain balanced fertilization and watering"),
-                    anfisFeatures = listOf("Uniform green color", "Intact leaf tissue")
-                )
-                else -> ScanResult(
-                    id = UUID.randomUUID().toString(),
-                    date = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date()),
-                    diseaseName = "Southern Leaf Spot",
-                    scientificName = "Bipolaris maydis",
-                    confidence = 0.934f,
-                    severity = "Moderate",
-                    severityColorHex = 0xFFFFA000,
-                    recommendations = listOf("Plant resistant hybrids", "Practice crop rotation to reduce residue", "Tillage to bury infected crop debris"),
-                    anfisFeatures = listOf("Oval lesions", "Tan spots")
-                )
+            val currentUri = imageUri
+            val scanResult = if (currentUri != null) {
+                classifier.classify(currentUri)
+            } else {
+                classifier.classify(Uri.EMPTY)
             }
             onResult(scanResult)
         }
@@ -252,9 +208,13 @@ fun DetectDiseaseScreen(
                     onClick = { 
                         val permissionCheck = ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA)
                         if (permissionCheck == PackageManager.PERMISSION_GRANTED) {
-                            val uri = createTempImageUri(context)
-                            tempUri = uri
-                            cameraLauncher.launch(uri)
+                            try {
+                                val uri = createTempImageUri(context)
+                                tempUri = uri
+                                cameraLauncher.launch(uri)
+                            } catch (e: Exception) {
+                                Log.e("DetectDiseaseScreen", "Error launching camera: ${e.message}")
+                            }
                         } else {
                             permissionLauncher.launch(android.Manifest.permission.CAMERA)
                         }

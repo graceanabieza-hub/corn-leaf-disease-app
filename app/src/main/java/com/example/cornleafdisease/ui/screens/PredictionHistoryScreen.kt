@@ -29,13 +29,13 @@ import androidx.compose.ui.tooling.preview.Preview
 
 @Preview(showBackground = true)
 @Composable
-fun PredictionHistoryScreenPreview() {
-    PredictionHistoryScreen(history = emptyList(), onBack = {}, onDelete = {}, onItemClick = {})
+fun ClassificationHistoryScreenPreview() {
+    ClassificationHistoryScreen(history = emptyList(), onBack = {}, onDelete = {}, onItemClick = {})
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PredictionHistoryScreen(
+fun ClassificationHistoryScreen(
     history: List<ScanResult>,
     onBack: () -> Unit,
     onDelete: (String) -> Unit,
@@ -53,7 +53,7 @@ fun PredictionHistoryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Prediction History", color = Color.White) },
+                title = { Text("Classification History", color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, null, tint = Color.White)
