@@ -15,10 +15,16 @@ interface DatabaseRepository {
 }
 
 class DatabaseRepositoryImpl(private val context: Context) : DatabaseRepository {
-    private val dao by lazy { AppDatabase.getDatabase(context).scanResultDao() }
+    private fun getDao() = try {
+        AppDatabase.getDatabase(context).scanResultDao()
+    } catch (t: Throwable) {
+        Log.e("DatabaseRepository", "Failed to get Room DAO", t)
+        null
+    }
 
     override suspend fun saveScanResult(result: ScanResult): Boolean = withContext(Dispatchers.IO) {
         return@withContext try {
+            val dao = getDao() ?: return@withContext false
             val entity = ScanResultEntity(
                 id = result.id,
                 date = result.date,
@@ -34,14 +40,15 @@ class DatabaseRepositoryImpl(private val context: Context) : DatabaseRepository 
             dao.insertScan(entity)
             Log.d("DatabaseRepository", "Saved scan result to Room DB: $result")
             true
-        } catch (e: Exception) {
-            Log.e("DatabaseRepository", "Error saving scan result to Room DB", e)
+        } catch (t: Throwable) {
+            Log.e("DatabaseRepository", "Error saving scan result to Room DB", t)
             false
         }
     }
 
     override suspend fun getScanHistory(): List<ScanResult> = withContext(Dispatchers.IO) {
         return@withContext try {
+            val dao = getDao() ?: return@withContext emptyList()
             dao.getAllScans().map { entity ->
                 ScanResult(
                     id = entity.id,
@@ -56,19 +63,20 @@ class DatabaseRepositoryImpl(private val context: Context) : DatabaseRepository 
                     anfisFeatures = entity.anfisFeatures
                 )
             }
-        } catch (e: Exception) {
-            Log.e("DatabaseRepository", "Error fetching scan history from Room DB", e)
+        } catch (t: Throwable) {
+            Log.e("DatabaseRepository", "Error fetching scan history from Room DB", t)
             emptyList()
         }
     }
 
     override suspend fun deleteScanResult(id: String): Boolean = withContext(Dispatchers.IO) {
         return@withContext try {
+            val dao = getDao() ?: return@withContext false
             dao.deleteScan(id)
             Log.d("DatabaseRepository", "Deleted scan record from Room DB with id: $id")
             true
-        } catch (e: Exception) {
-            Log.e("DatabaseRepository", "Error deleting scan record from Room DB", e)
+        } catch (t: Throwable) {
+            Log.e("DatabaseRepository", "Error deleting scan record from Room DB", t)
             false
         }
     }

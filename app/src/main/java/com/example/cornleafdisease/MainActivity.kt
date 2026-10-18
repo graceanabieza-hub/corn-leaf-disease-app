@@ -1,6 +1,7 @@
 package com.example.cornleafdisease
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.padding
@@ -31,15 +32,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         try {
-            ModelTest.test(this)
-            ModelTest.testAnfis(this)
-        } catch (e: Exception) {
-            android.util.Log.e("MainActivity", "Model test exception on launch safely caught", e)
-        }
-        setContent {
-            CornLeafTheme {
-                MainApp()
+            setContent {
+                CornLeafTheme {
+                    MainApp()
+                }
             }
+        } catch (t: Throwable) {
+            Log.e("MainActivity", "Fatal launch error prevented", t)
         }
     }
 }
@@ -50,7 +49,7 @@ fun MainApp() {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
     
-    // Repository and shared state (Local SharedPreferences)
+    // Repository and shared state
     val repository = remember { DatabaseRepositoryImpl(context) }
     var latestScanResult by remember { mutableStateOf<ScanResult?>(null) }
     var isViewingHistoryItem by remember { mutableStateOf(false) }
@@ -58,7 +57,11 @@ fun MainApp() {
 
     // Sync history initially
     LaunchedEffect(Unit) {
-        historyState = repository.getScanHistory()
+        try {
+            historyState = repository.getScanHistory()
+        } catch (t: Throwable) {
+            Log.e("MainApp", "Failed to sync initial history", t)
+        }
     }
 
     val bottomItems = listOf(
