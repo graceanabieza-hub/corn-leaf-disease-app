@@ -1,12 +1,13 @@
 package com.example.cornleafdisease.data.repository
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
-import com.example.cornleafdisease.data.local.AppDatabase
-import com.example.cornleafdisease.data.local.ScanResultEntity
 import com.example.cornleafdisease.data.model.ScanResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 interface DatabaseRepository {
     suspend fun saveScanResult(result: ScanResult): Boolean
@@ -15,68 +16,54 @@ interface DatabaseRepository {
 }
 
 class DatabaseRepositoryImpl(private val context: Context) : DatabaseRepository {
-    private fun getDao() = try {
-        AppDatabase.getDatabase(context).scanResultDao()
-    } catch (t: Throwable) {
-        Log.e("DatabaseRepository", "Failed to get Room DAO", t)
-        null
+    private val prefs: SharedPreferences by lazy {
+        context.getSharedPreferences("corn_disease_local_prefs", Context.MODE_PRIVATE)
     }
+    private val keyHistory = "scan_history_json_list"
+    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
     override suspend fun saveScanResult(result: ScanResult): Boolean = withContext(Dispatchers.IO) {
         return@withContext try {
-            val dao = getDao() ?: return@withContext false
-            val entity = ScanResultEntity(
-                id = result.id,
-                date = result.date,
-                diseaseName = result.diseaseName,
-                scientificName = result.scientificName,
-                confidence = result.confidence,
-                severity = result.severity,
-                severityColorHex = result.severityColorHex,
-                imageUrl = result.imageUrl,
-                recommendations = result.recommendations,
-                anfisFeatures = result.anfisFeatures
-            )
-            dao.insertScan(entity)
-            Log.d("DatabaseRepository", "Saved scan result to Room DB: $result")
+            val currentHistory = getScanHistory().toMutableList()
+            if (currentHistory.none { it.id == result.id }) {
+                currentHistory.add(0, result) // Add to top of list
+            }
+            val jsonString = json.encodeToString(currentHistory)
+            prefs.edit().putString(keyHistory, jsonString).apply()
+            Log.d("DatabaseRepository", "Saved scan result locally: $result")
             true
-        } catch (t: Throwable) {
-            Log.e("DatabaseRepository", "Error saving scan result to Room DB", t)
+        } catch (e: Exception) {
+            Log.e("DatabaseRepository", "Error saving scan result locally", e)
             false
         }
     }
 
     override suspend fun getScanHistory(): List<ScanResult> = withContext(Dispatchers.IO) {
         return@withContext try {
-            val dao = getDao() ?: return@withContext emptyList()
-            dao.getAllScans().map { entity ->
-                ScanResult(
-                    id = entity.id,
-                    date = entity.date,
-                    diseaseName = entity.diseaseName,
-                    scientificName = entity.scientificName,
-                    confidence = entity.confidence,
-                    severity = entity.severity,
-                    severityColorHex = entity.severityColorHex,
-                    imageUrl = entity.imageUrl,
-                    recommendations = entity.recommendations,
-                    anfisFeatures = entity.anfisFeatures
-                )
+            val jsonString = prefs.getString(keyHistory, null)
+            if (!jsonString.isNullOrEmpty()) {
+                json.decodeFromString<List<ScanResult>>(jsonString)
+            } else {
+                emptyList()
             }
-        } catch (t: Throwable) {
-            Log.e("DatabaseRepository", "Error fetching scan history from Room DB", t)
+        } catch (e: Exception) {
+            Log.e("DatabaseRepository", "Error fetching local scan history", e)
             emptyList()
         }
     }
 
     override suspend fun deleteScanResult(id: String): Boolean = withContext(Dispatchers.IO) {
         return@withContext try {
-            val dao = getDao() ?: return@withContext false
-            dao.deleteScan(id)
-            Log.d("DatabaseRepository", "Deleted scan record from Room DB with id: $id")
+            val currentHistory = getScanHistory().toMutableList()
+            val removed = currentHistory.removeAll { it.id == id }
+            if (removed) {
+                val jsonString = json.encodeToString(currentHistory)
+                prefs.edit().putString(keyHistory, jsonString).apply()
+                Log.d("DatabaseRepository", "Deleted local scan record with id: $id")
+            }
             true
-        } catch (t: Throwable) {
-            Log.e("DatabaseRepository", "Error deleting scan record from Room DB", t)
+        } catch (e: Exception) {
+            Log.e("DatabaseRepository", "Error deleting local scan record", e)
             false
         }
     }

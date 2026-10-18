@@ -2,7 +2,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     kotlin("plugin.serialization") version "2.0.21"
-    id("com.google.devtools.ksp")
 }
 
 android {
@@ -57,11 +56,6 @@ dependencies {
 
     // KotlinX Serialization for local JSON persistence
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-
-    // Room Database with KSP
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
