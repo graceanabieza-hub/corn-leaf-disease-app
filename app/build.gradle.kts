@@ -1,7 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    kotlin("plugin.serialization") version "2.2.10"
+    kotlin("plugin.serialization") version "2.0.20"
+    alias(libs.plugins.kotlin.android)
 }
 
 android {
@@ -26,8 +27,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
     buildFeatures {
         compose = true
@@ -43,6 +44,9 @@ android {
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
+    }
+    kotlinOptions {
+        jvmTarget = "21"
     }
 }
 
@@ -60,17 +64,15 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.0")
     implementation("io.coil-kt:coil-compose:2.7.0")          // for loading images
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
+    implementation(libs.core.ktx)
+    implementation("org.tensorflow:tensorflow-lite:2.17.0")
 
-    // Supabase & Ktor & Serialization
-    implementation(platform("io.github.jan-tennert.supabase:bom:3.0.3"))
-    implementation("io.github.jan-tennert.supabase:postgrest-kt")
-    implementation("io.github.jan-tennert.supabase:storage-kt")
-    implementation("io.ktor:ktor-client-cio:3.0.3")
+    // KotlinX Serialization for local JSON persistence
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
-    // PyTorch Mobile for Android (for .pt model execution)
-    implementation("org.pytorch:pytorch_android_lite:2.1.0")
-    implementation("org.pytorch:pytorch_android_torchvision_lite:2.1.0")
+    // Room Runtime (for entity/DAO definitions reference)
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

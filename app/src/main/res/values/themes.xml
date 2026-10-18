@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="Theme.Cornleafdisease" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Cornleafdisease" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Remove initial system icon splash on Android 12+ to go straight to custom splash screen -->
+        <item name="android:windowSplashScreenAnimatedIcon" tools:targetApi="31">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBackground" tools:targetApi="31">#0D3B12</item>
+    </style>
 </resources>

@@ -1,9 +1,11 @@
 package com.example.cornleafdisease.data.repository
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import com.example.cornleafdisease.data.model.ScanResult
-import com.example.cornleafdisease.data.remote.SupabaseClient
-import io.github.jan.supabase.postgrest.from
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 interface DatabaseRepository {
     suspend fun saveScanResult(result: ScanResult): Boolean
@@ -11,43 +13,53 @@ interface DatabaseRepository {
     suspend fun deleteScanResult(id: String): Boolean
 }
 
-class DatabaseRepositoryImpl : DatabaseRepository {
-    private val tableName = "scan_results"
+class DatabaseRepositoryImpl(private val context: Context) : DatabaseRepository {
+    private val prefs: SharedPreferences = context.getSharedPreferences("corn_disease_local_prefs", Context.MODE_PRIVATE)
+    private val keyHistory = "scan_history_json_list"
+    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
     override suspend fun saveScanResult(result: ScanResult): Boolean {
         return try {
-            Log.d("DatabaseRepository", "Saving scan record to Supabase: $result")
-            SupabaseClient.client.from(tableName).insert(result)
+            val currentHistory = getScanHistory().toMutableList()
+            if (currentHistory.none { it.id == result.id }) {
+                currentHistory.add(0, result) // Add to top of list
+            }
+            val jsonString = json.encodeToString(currentHistory)
+            prefs.edit().putString(keyHistory, jsonString).apply()
+            Log.d("DatabaseRepository", "Saved scan result locally: $result")
             true
         } catch (e: Exception) {
-            Log.e("DatabaseRepository", "Error saving scan record to Supabase", e)
+            Log.e("DatabaseRepository", "Error saving scan result locally", e)
             false
         }
     }
 
     override suspend fun getScanHistory(): List<ScanResult> {
         return try {
-            Log.d("DatabaseRepository", "Fetching scan history from Supabase")
-            SupabaseClient.client.from(tableName)
-                .select()
-                .decodeList<ScanResult>()
+            val jsonString = prefs.getString(keyHistory, null)
+            if (!jsonString.isNullOrEmpty()) {
+                json.decodeFromString<List<ScanResult>>(jsonString)
+            } else {
+                emptyList()
+            }
         } catch (e: Exception) {
-            Log.e("DatabaseRepository", "Error fetching scan history from Supabase", e)
+            Log.e("DatabaseRepository", "Error fetching local scan history", e)
             emptyList()
         }
     }
 
     override suspend fun deleteScanResult(id: String): Boolean {
         return try {
-            Log.d("DatabaseRepository", "Deleting scan record from Supabase with id: $id")
-            SupabaseClient.client.from(tableName).delete {
-                filter {
-                    eq("id", id)
-                }
+            val currentHistory = getScanHistory().toMutableList()
+            val removed = currentHistory.removeAll { it.id == id }
+            if (removed) {
+                val jsonString = json.encodeToString(currentHistory)
+                prefs.edit().putString(keyHistory, jsonString).apply()
+                Log.d("DatabaseRepository", "Deleted local scan record with id: $id")
             }
             true
         } catch (e: Exception) {
-            Log.e("DatabaseRepository", "Error deleting scan record from Supabase", e)
+            Log.e("DatabaseRepository", "Error deleting local scan record", e)
             false
         }
     }

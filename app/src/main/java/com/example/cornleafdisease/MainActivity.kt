@@ -8,11 +8,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
@@ -27,6 +29,9 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        ModelTest.test(this)
+        ModelTest.testAnfis(this)
         setContent {
             CornLeafTheme {
                 MainApp()
@@ -37,11 +42,12 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainApp() {
+    val context = LocalContext.current
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
     
-    // Repository and shared state
-    val repository = remember { DatabaseRepositoryImpl() }
+    // Repository and shared state (Local SharedPreferences)
+    val repository = remember { DatabaseRepositoryImpl(context) }
     var latestScanResult by remember { mutableStateOf<ScanResult?>(null) }
     var isViewingHistoryItem by remember { mutableStateOf(false) }
     var historyState by remember { mutableStateOf(emptyList<ScanResult>()) }
@@ -53,13 +59,15 @@ fun MainApp() {
 
     val bottomItems = listOf(
         BottomNavItem("Home", Screen.Home.route, Icons.Default.Home),
-        BottomNavItem("Disease Info", Screen.DiseaseInfo.route, Icons.AutoMirrored.Filled.MenuBook),
+        BottomNavItem("Guide", Screen.Guide.route, Icons.AutoMirrored.Filled.MenuBook),
+        BottomNavItem("Disease Info", Screen.DiseaseInfo.route, Icons.Default.Info),
         BottomNavItem("History", Screen.ClassificationHistory.route, Icons.Default.History)
     )
 
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
     val showBottomBar = currentRoute in listOf(
         Screen.Home.route,
+        Screen.Guide.route,
         Screen.DiseaseInfo.route,
         Screen.ClassificationResult.route,
         Screen.ClassificationHistory.route
@@ -96,9 +104,18 @@ fun MainApp() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Home.route,
+            startDestination = Screen.Splash.route,
             modifier = Modifier.padding(innerPadding)
         ) {
+            composable(Screen.Splash.route) {
+                SplashScreen(
+                    onNavigateToHome = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Splash.route) { inclusive = true }
+                        }
+                    }
+                )
+            }
             composable(Screen.Home.route) {
                 HomeScreen(
                     onCaptureClick = { navController.navigate(Screen.DetectDisease.route) }
@@ -134,6 +151,9 @@ fun MainApp() {
             }
             composable(Screen.DiseaseInfo.route) {
                 DiseaseInfoScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Screen.Guide.route) {
+                GuideScreen()
             }
             composable(Screen.ClassificationHistory.route) {
                 ClassificationHistoryScreen(
