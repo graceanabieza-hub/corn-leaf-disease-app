@@ -30,8 +30,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        ModelTest.test(this)
-        ModelTest.testAnfis(this)
+        try {
+            ModelTest.test(this)
+            ModelTest.testAnfis(this)
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Model test exception on launch safely caught", e)
+        }
         setContent {
             CornLeafTheme {
                 MainApp()
