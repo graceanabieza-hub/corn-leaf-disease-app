@@ -1,114 +1,81 @@
 package com.example.cornleafdisease
 
-// Pure Kotlin Generalized Bell ANFIS inference. Input: eight features from TFLite.
-// Requires org.json (built into Android).
+import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.*
 
-class GeneralizedBellInference(private val j: JSONObject) {
-    private fun vec(a: org.json.JSONArray): DoubleArray = DoubleArray(a.length()) { a.getDouble(it) }
-    private fun matrix(a: org.json.JSONArray): Array<DoubleArray> = Array(a.length()) { vec(a.getJSONArray(it)) }
-    private val names = j.getJSONArray("class_names")
-    private val mins = vec(j.getJSONArray("scaler_min"))
-    private val scales = vec(j.getJSONArray("scaler_scale"))
-    private val centers = matrix(j.getJSONArray("centers"))
-    private val widths = matrix(j.getJSONArray("raw_widths"))
-    private val slopes = matrix(j.getJSONArray("raw_slopes"))
-    private val rules = matrix(j.getJSONArray("rule_indices"))
-    private val cons = j.getJSONArray("consequents")
-    private fun softplus(x: Double): Double = max(x,0.0)+ln1p(exp(-abs(x)))
+/** Inference for the exported five-class Generalized Bell ANFIS checkpoint. */
+class GeneralizedBellInference(private val json: JSONObject) {
+    private fun vector(a: JSONArray) = DoubleArray(a.length()) { a.getDouble(it) }
+    private fun matrix(a: JSONArray) = Array(a.length()) { vector(a.getJSONArray(it)) }
+
+    private val labels = json.getJSONArray("class_names")
+    private val scalerMin = vector(json.getJSONArray("scaler_min"))
+    private val scalerScale = vector(json.getJSONArray("scaler_scale"))
+    private val parameters = json.getJSONObject("anfis")
+    private val centers = matrix(parameters.getJSONArray("centers"))
+    private val rawWidths = matrix(parameters.getJSONArray("raw_widths"))
+    private val rawSlopes = matrix(parameters.getJSONArray("raw_slopes"))
+    private val ruleIndices = matrix(parameters.getJSONArray("rule_indices"))
+    private val consequents = parameters.getJSONArray("consequents")
+
+    init {
+        require(scalerMin.size == scalerScale.size)
+        require(centers.size == scalerMin.size)
+        require(ruleIndices.isNotEmpty())
+        require(consequents.length() == ruleIndices.size)
+        require(labels.length() == 5) { "Expected 5 output classes" }
+    }
+
+    private fun softplus(v: Double): Double = max(v, 0.0) + ln1p(exp(-abs(v)))
+
     fun predict(features: FloatArray): Pair<String, DoubleArray> {
-        require(features.size == mins.size) { "Expected ${mins.size} features" }
-        val x = DoubleArray(features.size) { features[it].toDouble()*scales[it]+mins[it] }
-        val logits = DoubleArray(names.length())
-        val logFiring = DoubleArray(rules.size)
-        for (r in rules.indices) {
-            var logStrength = 0.0
-            for (i in x.indices) {
-                val m = rules[r][i].toInt()
-
-                val w = softplus(widths[i][m]) + 1e-4
-                val b = softplus(slopes[i][m]) + 1e-4
-
-                val ratio = max(
-                    abs((x[i] - centers[i][m]) / w),
-                    1e-8
-                )
-
-                val mu = 1.0 / (1.0 + ratio.pow(2.0 * b))
-
-                logStrength += ln(max(mu, 1e-12))
-            }
-            logFiring[r] = logStrength
-        }
-        val maxLog = logFiring.maxOrNull()!!
-        val strengths = DoubleArray(rules.size) { exp(logFiring[it]-maxLog) }
-        val denom = strengths.sum()
-        for (r in rules.indices) {
-            val coeffs = cons.getJSONArray(r) // [features+1][classes]
-            val weight = strengths[r]/denom
-            for (k in logits.indices) {
-                var y = coeffs.getJSONArray(x.size).getDouble(k) // bias
-                for (i in x.indices) y += x[i]*coeffs.getJSONArray(i).getDouble(k)
-                logits[k] += weight*y
-            }
-        }
-        // Calibrated temperature scaling to produce well-separated confidence scores (80%–98% for clear predictions)
-        val temperature = 0.035
-        val scaledLogits = DoubleArray(logits.size) { logits[it] / temperature }
-        val maxY = scaledLogits.maxOrNull()!!
-        val probs = DoubleArray(scaledLogits.size) { exp(scaledLogits[it] - maxY) }
-        val total = probs.sum()
-        for (k in probs.indices) probs[k] /= total
-        val best = probs.indices.maxByOrNull { probs[it] }!!
-        return names.getString(best) to probs
+        val (label, probabilities, _) = predictWithLogits(features)
+        return label to probabilities
     }
 
     fun predictWithLogits(features: FloatArray): Triple<String, DoubleArray, FloatArray> {
-        require(features.size == mins.size) { "Expected ${mins.size} features" }
-        val x = DoubleArray(features.size) { features[it].toDouble()*scales[it]+mins[it] }
-        val logits = DoubleArray(names.length())
-        val logFiring = DoubleArray(rules.size)
-        for (r in rules.indices) {
+        require(features.size == scalerMin.size) { "Expected ${scalerMin.size} features, got ${features.size}" }
+        require(features.all { it.isFinite() }) { "Non-finite CNN features" }
+        val x = DoubleArray(features.size) { i -> features[i].toDouble() * scalerScale[i] + scalerMin[i] }
+        val logFiring = DoubleArray(ruleIndices.size)
+
+        for (r in ruleIndices.indices) {
             var logStrength = 0.0
             for (i in x.indices) {
-                val m = rules[r][i].toInt()
-
-                val w = softplus(widths[i][m]) + 1e-4
-                val b = softplus(slopes[i][m]) + 1e-4
-
-                val ratio = max(
-                    abs((x[i] - centers[i][m]) / w),
-                    1e-8
-                )
-
-                val mu = 1.0 / (1.0 + ratio.pow(2.0 * b))
-
-                logStrength += ln(max(mu, 1e-12))
+                val mf = ruleIndices[r][i].toInt()
+                val width = softplus(rawWidths[i][mf]) + 1e-4
+                val slope = softplus(rawSlopes[i][mf]) + 1e-4
+                val ratio = max(abs((x[i] - centers[i][mf]) / width), 1e-8)
+                // Stable log(1 / (1 + ratio^(2*slope)))
+                logStrength -= softplus(2.0 * slope * ln(ratio))
             }
             logFiring[r] = logStrength
         }
+
         val maxLog = logFiring.maxOrNull()!!
-        val strengths = DoubleArray(rules.size) { exp(logFiring[it]-maxLog) }
-        val denom = strengths.sum()
-        for (r in rules.indices) {
-            val coeffs = cons.getJSONArray(r) // [features+1][classes]
-            val weight = strengths[r]/denom
+        val strengths = DoubleArray(ruleIndices.size) { exp(logFiring[it] - maxLog) }
+        val totalStrength = strengths.sum()
+        require(totalStrength > 0.0 && totalStrength.isFinite()) { "Invalid ANFIS firing strengths" }
+
+        val logits = DoubleArray(labels.length())
+        for (r in ruleIndices.indices) {
+            val weight = strengths[r] / totalStrength
+            val coeff = consequents.getJSONArray(r) // [features + bias][classes]
             for (k in logits.indices) {
-                var y = coeffs.getJSONArray(x.size).getDouble(k) // bias
-                for (i in x.indices) y += x[i]*coeffs.getJSONArray(i).getDouble(k)
-                logits[k] += weight*y
+                var output = coeff.getJSONArray(x.size).getDouble(k)
+                for (i in x.indices) output += x[i] * coeff.getJSONArray(i).getDouble(k)
+                logits[k] += weight * output
             }
         }
-        val finalAnfisScores = FloatArray(logits.size) { logits[it].toFloat() }
 
-        val temperature = 0.035
-        val scaledLogits = DoubleArray(logits.size) { logits[it] / temperature }
-        val maxY = scaledLogits.maxOrNull()!!
-        val probs = DoubleArray(scaledLogits.size) { exp(scaledLogits[it] - maxY) }
-        val total = probs.sum()
-        for (k in probs.indices) probs[k] /= total
-        val best = probs.indices.maxByOrNull { probs[it] }!!
-        return Triple(names.getString(best), probs, finalAnfisScores)
+        // Uncalibrated softmax: do not artificially inflate displayed confidence.
+        val maxValue = logits.maxOrNull()!!
+        val probabilities = DoubleArray(logits.size) { exp(logits[it] - maxValue) }
+        val sum = probabilities.sum()
+        require(sum > 0.0 && sum.isFinite()) { "Invalid ANFIS probabilities" }
+        for (i in probabilities.indices) probabilities[i] /= sum
+        val winner = probabilities.indices.maxByOrNull { probabilities[it] }!!
+        return Triple(labels.getString(winner), probabilities, FloatArray(logits.size) { logits[it].toFloat() })
     }
 }

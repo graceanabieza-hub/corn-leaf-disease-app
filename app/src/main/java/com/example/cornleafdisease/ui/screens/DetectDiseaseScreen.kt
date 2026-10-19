@@ -1,8 +1,12 @@
+
 package com.example.cornleafdisease.ui.screens
 
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import android.graphics.Matrix
+import androidx.exifinterface.media.ExifInterface
 import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -39,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
+import com.example.cornleafdisease.data.local.ScanImageStorage
 import com.example.cornleafdisease.CornLeafClassifier
 import com.example.cornleafdisease.data.model.ScanResult
 import com.example.cornleafdisease.ui.theme.*
@@ -56,6 +61,9 @@ private val DetectGreenSoft = Color(0xFFE4F0E5)
 private val DetectOutline = Color(0xFFE1E7E0)
 private val DetectAmberSoft = Color(0xFFFFF6DC)
 private val DetectAmber = Color(0xFFB77900)
+
+// Temporary confidence cutoff for testing; validate on labeled images before final use.
+private const val MIN_CLASSIFICATION_CONFIDENCE = 0.40f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -141,11 +149,7 @@ fun DetectDiseaseScreen(
 
             try {
                 val prediction = withContext(Dispatchers.Default) {
-                    val bitmap = context.contentResolver
-                        .openInputStream(selectedUri)
-                        ?.use { stream ->
-                            BitmapFactory.decodeStream(stream)
-                        } ?: error("Unable to decode selected image.")
+                    val bitmap = decodeOrientedBitmap(context, selectedUri)
 
                     CornLeafClassifier(context).use { classifier ->
                         classifier.classify(bitmap)
@@ -161,7 +165,8 @@ fun DetectDiseaseScreen(
                     "Confidence: ${prediction.confidence}"
                 )
 
-                val scanResult = createScanResult(prediction, isFromCamera)
+                val savedImagePath = ScanImageStorage.saveImage(context, selectedUri)
+                val scanResult = createScanResult(prediction, savedImagePath)
 
                 isAnalyzing = false
                 onResult(scanResult)
@@ -652,18 +657,57 @@ fun DetectDiseaseScreen(
     }
 }
 
+// Shared orientation-aware decoder for camera and gallery URI images.
+// EXIF metadata is read from a fresh stream because decoding consumes its stream.
+private fun decodeOrientedBitmap(context: Context, uri: Uri): Bitmap {
+    val bitmap = context.contentResolver.openInputStream(uri)?.use { input ->
+        BitmapFactory.decodeStream(input)
+    } ?: error("Unable to decode selected image.")
+    val orientation = context.contentResolver.openInputStream(uri)?.use { input ->
+        ExifInterface(input).getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL
+        )
+    } ?: ExifInterface.ORIENTATION_NORMAL
+    val matrix = Matrix()
+    when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+        ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+        ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f); matrix.postScale(-1f, 1f) }
+        ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.postScale(-1f, 1f) }
+    }
+    if (orientation == ExifInterface.ORIENTATION_NORMAL || orientation == ExifInterface.ORIENTATION_UNDEFINED) return bitmap
+    return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true).also {
+        if (it !== bitmap) bitmap.recycle()
+    }
+}
+
 // ============================================================
 // CONVERT ACTUAL MODEL PREDICTION TO SCAN RESULT
 // ============================================================
 
 private fun createScanResult(
     prediction: CornLeafClassifier.ClassificationResult,
-    isFromCamera: Boolean
+    imageUrl: String? = null
 ): ScanResult {
 
     val confidence = prediction.confidence.toFloat().coerceIn(0f, 1f)
-    val threshold = if (isFromCamera) 0.70f else 0.30f
-    val disease = if (confidence < threshold) "Healthy Leaves" else prediction.disease
+    // Apply the same threshold to camera and gallery results.
+    // Never convert a low-confidence prediction into "Healthy Leaves".
+    val disease = when {
+        prediction.disease == "Non-Corn Leaf" &&
+                confidence >= MIN_CLASSIFICATION_CONFIDENCE -> "Corn Leaf Not Detected"
+        confidence < MIN_CLASSIFICATION_CONFIDENCE -> "Uncertain Classification"
+        else -> prediction.disease
+    }
+    Log.d(
+        "CORN_CLASSIFIER",
+        "Raw prediction=${prediction.disease}, confidence=$confidence, " +
+                "threshold=$MIN_CLASSIFICATION_CONFIDENCE, displayed=$disease"
+    )
 
     val scientificName = when (disease) {
         "Common Rust" -> "Puccinia sorghi"
@@ -704,6 +748,12 @@ private fun createScanResult(
             "Proper Planting Schedule: Avoid prolonged periods of leaf wetness where possible.\nBisaya: Pagtanom sa saktong panahon ug likayi ang basa kaayo nga palibot sa dahon."
         )
 
+        "Uncertain Classification" -> listOf(
+            "Low Confidence: The model could not classify this image reliably. Do not treat its predicted disease as confirmed.\nBisaya: Ubos ang confidence sa model. Ayaw sa isipon nga kumpirmado ang sakit sa dahon.",
+            "Retake Photo: Use natural daylight, focus on a single corn leaf, and avoid blur and heavy shadows.\nBisaya: Pagkuha og bag-ong klarong hulagway sa usa ka dahon sa mais gamit ang natural nga kahayag.",
+            "Seek Verification: If symptoms remain unclear, consult an agricultural technician.\nBisaya: Kung dili gihapon klaro ang sakit, pakonsulta sa agricultural technician."
+        )
+
         else -> listOf(
             "Unclear Image Scan: Unable to detect a clear corn leaf disease from the photo.\nBisaya: Dili maklaro ang sakit sa dahon gikan sa gipasa nga hulagway.",
             "Lighting & Focus: Retake the photo in bright, natural daylight with the corn leaf in sharp focus.\nBisaya: Pictura og usab ubos sa hayag nga adlaw ug siguruha nga klaro ug dili libog ang dahon.",
@@ -711,8 +761,10 @@ private fun createScanResult(
         )
     }
 
-    val severityText = if (disease == "Unable to Detect Disease") "N/A" else "Not assessed"
-    val severityHex = if (disease == "Unable to Detect Disease") 0xFF9E9E9E else 0xFF757575
+    val isUndetermined = disease == "Corn Leaf Not Detected" ||
+            disease == "Uncertain Classification"
+    val severityText = if (isUndetermined) "N/A" else "Not assessed"
+    val severityHex = if (isUndetermined) 0xFF9E9E9E else 0xFF757575
 
     return ScanResult(
         id = UUID.randomUUID().toString(),
@@ -725,9 +777,10 @@ private fun createScanResult(
         confidence = confidence,
         severity = severityText,
         severityColorHex = severityHex,
+        imageUrl = imageUrl,
         recommendations = recommendations,
         anfisFeatures = listOf(
-            "MobileNetV3 CNN feature extraction",
+            "MobileNetV2 CNN feature extraction",
             "Generalized Bell ANFIS classification"
         )
     )

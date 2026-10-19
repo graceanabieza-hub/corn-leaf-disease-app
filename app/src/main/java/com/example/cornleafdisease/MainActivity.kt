@@ -163,13 +163,23 @@ fun MainApp() {
                 GuideScreen()
             }
             composable(Screen.ClassificationHistory.route) {
+                var history by remember { mutableStateOf(historyState) }
+                LaunchedEffect(Unit) {
+                    try {
+                        history = repository.getScanHistory()
+                        historyState = history
+                    } catch (t: Throwable) {
+                        Log.e("MainApp", "Failed to load history", t)
+                    }
+                }
                 ClassificationHistoryScreen(
-                    history = historyState,
+                    history = history,
                     onBack = { navController.popBackStack() },
                     onDelete = { id ->
                         scope.launch {
                             repository.deleteScanResult(id)
-                            historyState = repository.getScanHistory()
+                            history = repository.getScanHistory()
+                            historyState = history
                         }
                     },
                     onItemClick = { scanResult ->
